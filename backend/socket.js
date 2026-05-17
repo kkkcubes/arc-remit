@@ -1,13 +1,24 @@
+import { Server }
+from "socket.io";
+
 let io;
 
 export const initSocket = (server) => {
 
-  io = require("socket.io")(server, {
+  io = new Server(server, {
 
     cors: {
-      origin: "http://localhost:5173",
-      methods: ["GET", "POST"],
+
+      origin:
+        "https://arc-remit-pgnj.vercel.app",
+
+      methods:
+        ["GET", "POST"],
+
+      credentials: true,
+
     },
+
   });
 
   return io;
@@ -16,9 +27,11 @@ export const initSocket = (server) => {
 export const getIO = () => {
 
   if (!io) {
+
     throw new Error(
       "Socket.io not initialized"
     );
+
   }
 
   return io;
