@@ -4,14 +4,36 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const sendPayment = async (req, res) => {
+
+  let client;
+
   try {
-    const recipient = req.body.recipient.trim();
-    const amount = req.body.amount;
+
+    const recipient =
+      String(req.body.recipient).trim();
+
+    const amount =
+      String(req.body.amount).trim();
 
     console.log("REQUEST RECEIVED");
-    console.log(recipient, amount);
+    console.log("Recipient:", recipient);
+    console.log("Amount:", amount);
 
-    const client = new xrpl.Client(
+    // VALIDATION
+
+    if (!recipient || !amount) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Recipient and amount required",
+      });
+
+    }
+
+    // CONNECT XRPL
+
+    client = new xrpl.Client(
       "wss://s.altnet.rippletest.net:51233"
     );
 
@@ -19,111 +41,293 @@ export const sendPayment = async (req, res) => {
 
     console.log("CONNECTED TO XRPL");
 
+    // CREATE WALLET
+
     const wallet = xrpl.Wallet.fromSeed(
-      process.env.XRPL_SECRET
+      String(process.env.XRPL_SECRET).trim()
     );
 
     console.log("SENDER WALLET:");
     console.log(wallet.address);
 
+    // CREATE PAYMENT OBJECT
+
     const payment = {
+
       TransactionType: "Payment",
+
       Account: wallet.address,
+
       Amount: xrpl.xrpToDrops(amount),
+
       Destination: recipient,
+
     };
 
     console.log("PAYMENT OBJECT:");
     console.log(payment);
 
-    const prepared = await client.autofill(payment);
+    // AUTOFILL TX
+
+    const prepared =
+      await client.autofill(payment);
 
     console.log("TRANSACTION PREPARED");
 
-    const signed = wallet.sign(prepared);
+    // SIGN TX
+
+    const signed =
+      wallet.sign(prepared);
 
     console.log("TRANSACTION SIGNED");
 
-    // SAFE TRANSACTION SUBMIT
-    const response = await client.submitAndWait(
-      signed.tx_blob
-    );
+    // SUBMIT TX
 
-    if (
-      response.result.meta.TransactionResult !==
-      "tesSUCCESS"
-    ) {
-      throw new Error(
-        response.result.meta.TransactionResult
+    const response =
+      await client.submitAndWait(
+        signed.tx_blob
       );
-    }
 
     console.log("XRPL RESULT:");
     console.log(response);
 
+    // CHECK SUCCESS
+
+    if (
+
+      response.result.meta
+        .TransactionResult !==
+      "tesSUCCESS"
+
+    ) {
+
+      throw new Error(
+
+        response.result.meta
+          .TransactionResult
+
+      );
+
+    }
+
     // SOCKET EVENT
-    global.io.emit("newTransaction", {
-      hash: response.result.hash,
-      amount,
-      recipient,
-      status: "Confirmed",
-      timestamp: new Date(),
-    });
+
+    if (global.io) {
+
+      global.io.emit(
+        "newTransaction",
+        {
+
+          hash:
+            response.result.hash,
+
+          amount,
+
+          recipient,
+
+          status: "Confirmed",
+
+          explorer:
+            `https://testnet.xrpl.org/transactions/${response.result.hash}`,
+
+          timestamp:
+            new Date(),
+
+        }
+      );
+
+    }
+
+    // DISCONNECT
 
     await client.disconnect();
 
     // SUCCESS RESPONSE
+
     return res.status(200).json({
+
       success: true,
-      hash: response.result.hash,
-      explorer: `https://testnet.xrpl.org/transactions/${response.result.hash}`,
+
+      hash:
+        response.result.hash,
+
+      explorer:
+        `https://testnet.xrpl.org/transactions/${response.result.hash}`,
+
+      result:
+        response.result.meta
+          .TransactionResult,
+
     });
+
   } catch (error) {
+
     console.log("FULL ERROR:");
     console.log(error);
 
-    if (error.data) {
-      console.log(error.data);
+    // SAFE DISCONNECT
+
+    if (client?.isConnected()) {
+
+      await client.disconnect();
+
     }
 
     return res.status(500).json({
+
       success: false,
+
       message:
-        error.message || "Transaction failed",
+        error.message ||
+        "Transaction failed",
+
     });
+
   }
+
 };
 
-// GET BALANCE FUNCTION
-export const getBalance = async (req, res) => {
+// REAL-TIME WALLET BALANCE
+
+export const getBalance = async (
+  req,
+  res
+) => {
+
+  let client;
+
   try {
-    const client = new xrpl.Client(
+
+    client = new xrpl.Client(
       "wss://s.altnet.rippletest.net:51233"
     );
 
     await client.connect();
 
-    const response = await client.request({
-      command: "account_info",
-      account:
-        process.env.XRPL_WALLET_ADDRESS,
-    });
+    const wallet = xrpl.Wallet.fromSeed(
+      String(process.env.XRPL_SECRET).trim()
+    );
 
-    const drops =
-      response.result.account_data.Balance;
+    const response =
+      await client.request({
 
-    const xrp = xrpl.dropsToXrp(drops);
+        command: "account_info",
+
+        account:
+          wallet.address,
+
+        ledger_index:
+          "validated",
+
+      });
+
+    const balance =
+      xrpl.dropsToXrp(
+
+        response.result
+          .account_data.Balance
+
+      );
 
     await client.disconnect();
 
-    res.json({
-      balance: xrp,
-    });
-  } catch (err) {
-    console.log(err);
+    return res.status(200).json({
 
-    res.status(500).json({
-      error: "Failed to fetch balance",
+      success: true,
+
+      address:
+        wallet.address,
+
+      balance,
+
     });
+
+  } catch (error) {
+
+    console.log(error);
+
+    if (client?.isConnected()) {
+
+      await client.disconnect();
+
+    }
+
+    return res.status(500).json({
+
+      success: false,
+
+      message:
+        "Failed to fetch balance",
+
+    });
+
   }
+
+};
+
+// REAL-TIME XRPL NETWORK INFO
+
+export const getNetworkInfo = async (
+  req,
+  res
+) => {
+
+  let client;
+
+  try {
+
+    client = new xrpl.Client(
+      "wss://s.altnet.rippletest.net:51233"
+    );
+
+    await client.connect();
+
+    const ledger =
+      await client.request({
+
+        command: "ledger",
+
+        ledger_index:
+          "validated",
+
+      });
+
+    await client.disconnect();
+
+    return res.status(200).json({
+
+      success: true,
+
+      ledgerIndex:
+        ledger.result.ledger_index,
+
+      closeTime:
+        ledger.result.ledger.close_time,
+
+      validated:
+        ledger.result.validated,
+
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    if (client?.isConnected()) {
+
+      await client.disconnect();
+
+    }
+
+    return res.status(500).json({
+
+      success: false,
+
+      message:
+        "Failed to fetch network info",
+
+    });
+
+  }
+
 };
