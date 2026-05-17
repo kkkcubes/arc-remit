@@ -4,216 +4,126 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const sendPayment = async (req, res) => {
-
   try {
+    const recipient = req.body.recipient.trim();
+    const amount = req.body.amount;
 
-    const recipient =
-      req.body.recipient.trim();
+    console.log("REQUEST RECEIVED");
+    console.log(recipient, amount);
 
-    const amount =
-      req.body.amount;
-
-    console.log(
-      "REQUEST RECEIVED"
+    const client = new xrpl.Client(
+      "wss://s.altnet.rippletest.net:51233"
     );
-
-    console.log(
-      recipient,
-      amount
-    );
-
-    const client =
-      new xrpl.Client(
-        "wss://s.altnet.rippletest.net:51233"
-      );
 
     await client.connect();
 
-    console.log(
-      "CONNECTED TO XRPL"
+    console.log("CONNECTED TO XRPL");
+
+    const wallet = xrpl.Wallet.fromSeed(
+      process.env.XRPL_SECRET
     );
 
-    const wallet =
-      xrpl.Wallet.fromSeed(
-        process.env.XRPL_SECRET
-      );
-
-    console.log(
-      "SENDER WALLET:"
-    );
-
-    console.log(
-      wallet.address
-    );
+    console.log("SENDER WALLET:");
+    console.log(wallet.address);
 
     const payment = {
-
-      TransactionType:
-        "Payment",
-
-      Account:
-        wallet.address,
-
-      Amount:
-        xrpl.xrpToDrops(amount),
-
-      Destination:
-        recipient,
-
+      TransactionType: "Payment",
+      Account: wallet.address,
+      Amount: xrpl.xrpToDrops(amount),
+      Destination: recipient,
     };
 
-    console.log(
-      "PAYMENT OBJECT:"
-    );
-
+    console.log("PAYMENT OBJECT:");
     console.log(payment);
 
-    const prepared =
-      await client.autofill(
-        payment
+    const prepared = await client.autofill(payment);
+
+    console.log("TRANSACTION PREPARED");
+
+    const signed = wallet.sign(prepared);
+
+    console.log("TRANSACTION SIGNED");
+
+    // SAFE TRANSACTION SUBMIT
+    const response = await client.submitAndWait(
+      signed.tx_blob
+    );
+
+    if (
+      response.result.meta.TransactionResult !==
+      "tesSUCCESS"
+    ) {
+      throw new Error(
+        response.result.meta.TransactionResult
       );
+    }
 
-    console.log(
-      "TRANSACTION PREPARED"
-    );
-
-    const signed =
-      wallet.sign(prepared);
-
-    console.log(
-      "TRANSACTION SIGNED"
-    );
-
-    const result =
-      await client.submitAndWait(
-        signed.tx_blob
-      );
-
-    console.log(
-      "XRPL RESULT:"
-    );
-
-    console.log(result);
+    console.log("XRPL RESULT:");
+    console.log(response);
 
     // SOCKET EVENT
-    global.io.emit(
-      "newTransaction",
-      {
-
-        hash:
-          result.result.hash,
-
-        amount,
-
-        recipient,
-
-        status:
-          "Confirmed",
-
-        timestamp:
-          new Date(),
-
-      }
-    );
+    global.io.emit("newTransaction", {
+      hash: response.result.hash,
+      amount,
+      recipient,
+      status: "Confirmed",
+      timestamp: new Date(),
+    });
 
     await client.disconnect();
 
-    // UPDATED RESPONSE
-    return res.json({
-
+    // SUCCESS RESPONSE
+    return res.status(200).json({
       success: true,
-
-      hash:
-        result.result.hash,
-
-      tx:
-        result.result,
-
+      hash: response.result.hash,
+      explorer: `https://testnet.xrpl.org/transactions/${response.result.hash}`,
     });
-
   } catch (error) {
-
-    console.log(
-      "FULL ERROR:"
-    );
-
+    console.log("FULL ERROR:");
     console.log(error);
 
     if (error.data) {
-
-      console.log(
-        error.data
-      );
-
+      console.log(error.data);
     }
 
     return res.status(500).json({
-
       success: false,
-
       message:
-        error.message ||
-        "Transaction failed",
-
+        error.message || "Transaction failed",
     });
-
   }
-
 };
 
 // GET BALANCE FUNCTION
-
-export const getBalance =
-async (req, res) => {
-
+export const getBalance = async (req, res) => {
   try {
-
-    const client =
-      new xrpl.Client(
-        "wss://s.altnet.rippletest.net:51233"
-      );
+    const client = new xrpl.Client(
+      "wss://s.altnet.rippletest.net:51233"
+    );
 
     await client.connect();
 
-    const response =
-      await client.request({
-
-        command:
-          "account_info",
-
-        account:
-          process.env.XRPL_WALLET_ADDRESS,
-
-      });
+    const response = await client.request({
+      command: "account_info",
+      account:
+        process.env.XRPL_WALLET_ADDRESS,
+    });
 
     const drops =
-      response.result
-        .account_data
-        .Balance;
+      response.result.account_data.Balance;
 
-    const xrp =
-      xrpl.dropsToXrp(drops);
+    const xrp = xrpl.dropsToXrp(drops);
 
     await client.disconnect();
 
     res.json({
-
-      balance:
-        xrp,
-
+      balance: xrp,
     });
-
   } catch (err) {
-
     console.log(err);
 
     res.status(500).json({
-
-      error:
-        "Failed to fetch balance",
-
+      error: "Failed to fetch balance",
     });
-
   }
-
 };
