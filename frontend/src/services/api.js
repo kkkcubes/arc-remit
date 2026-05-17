@@ -1,17 +1,18 @@
 import axios from "axios";
 
-const API =
-  "http://localhost:5000/api";
+// Create axios instance
+const API = axios.create({
+  baseURL: "https://arc-remit.onrender.com/api",
+});
 
-export const sendPayment =
-  (data) =>
-    axios.post(
-      `${API}/send`,
-      data
-    );
+// Send payment
+export const sendPayment = (data) => {
+  return API.post("/send", data);
+};
 
-export const getTransactions =
-  () =>
-    axios.get(
-      `${API}/transactions`
-    );
+// Get all transactions
+export const getTransactions = () => {
+  return API.get("/transactions");
+};
+
+export default API;

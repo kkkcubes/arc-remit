@@ -1,7 +1,11 @@
 import { io } from "socket.io-client";
 
+// Create socket connection
 const socket = io(
-  "http://localhost:5000"
+  "https://arc-remit.onrender.com",
+  {
+    transports: ["websocket"],
+  }
 );
 
 export default socket;
