@@ -1,14 +1,11 @@
 import { motion } from "framer-motion";
-
 import { useState } from "react";
 
-import axios from "axios";
+import API from "../services/api";
 
-import TransactionStatus
-from "./TransactionStatus";
+import TransactionStatus from "./TransactionStatus";
 
 function SendMoney() {
-
   const [recipient, setRecipient] =
     useState("");
 
@@ -18,7 +15,7 @@ function SendMoney() {
   const [loading, setLoading] =
     useState(false);
 
-  // NEW STATES
+  // Transaction states
   const [txHash, setTxHash] =
     useState("");
 
@@ -26,72 +23,41 @@ function SendMoney() {
     useState(false);
 
   const handleSend = async () => {
-
     try {
-
       setLoading(true);
 
-      const response =
-        await axios.post(
-
-          "http://localhost:5000/api/send",
-
-          {
-
-            recipient:
-              recipient.trim(),
-
-            amount,
-
-          }
-        );
-
-      console.log(response.data);
-
-      if (response.data.success) {
-
-        // ADDED
-        setTxHash(
-          response.data.hash
-        );
-
-        setShowModal(true);
-
-        alert(
-          "Transaction Successful!"
-        );
-
-        window.open(
-          response.data.explorer,
-          "_blank"
-        );
-
-      } else {
-
-        alert(
-          "Transaction Failed"
-        );
-
-      }
-
-    } catch (error) {
-
-      console.log(error);
-
-      alert(
-        "Transaction Failed"
+      const response = await API.post(
+        "/send",
+        {
+          recipient,
+          amount,
+        }
       );
 
+      // Success
+      alert("Transaction Success");
+
+      setTxHash(response.data.hash);
+
+      setShowModal(true);
+
+      window.open(
+        response.data.explorer,
+        "_blank"
+      );
+    } catch (err) {
+      console.log(err);
+
+      alert(
+        err?.response?.data?.message ||
+          "Transaction Failed"
+      );
     } finally {
-
       setLoading(false);
-
     }
-
   };
 
   return (
-
     <motion.div
       initial={{ opacity: 0, y: 40 }}
       animate={{ opacity: 1, y: 0 }}
@@ -106,13 +72,11 @@ function SendMoney() {
         mt-10
       "
     >
-
       <h2 className="text-3xl font-bold mb-8">
         Send Money
       </h2>
 
       <div className="mb-5">
-
         <label className="block mb-2 text-gray-300">
           Recipient Wallet
         </label>
@@ -130,15 +94,14 @@ function SendMoney() {
             outline-none
             focus:border-cyan-400
           "
+          value={recipient}
           onChange={(e) =>
             setRecipient(e.target.value)
           }
         />
-
       </div>
 
       <div className="mb-6">
-
         <label className="block mb-2 text-gray-300">
           Amount
         </label>
@@ -156,11 +119,11 @@ function SendMoney() {
             outline-none
             focus:border-cyan-400
           "
+          value={amount}
           onChange={(e) =>
             setAmount(e.target.value)
           }
         />
-
       </div>
 
       <button
@@ -183,20 +146,16 @@ function SendMoney() {
           shadow-[0_0_40px_rgba(0,255,150,0.25)]
         "
       >
-
         {loading
           ? "Processing Blockchain Transaction..."
           : "Send Payment"}
-
       </button>
 
       {/* TRANSACTION STATUS */}
       <TransactionStatus />
 
       {/* TRANSACTION MODAL */}
-
       {showModal && (
-
         <div
           className="
             mt-6
@@ -206,7 +165,6 @@ function SendMoney() {
             border border-emerald-400/30
           "
         >
-
           <h3 className="text-xl font-bold text-emerald-400 mb-2">
             Transaction Successful
           </h3>
@@ -218,15 +176,10 @@ function SendMoney() {
           <p className="text-sm text-white break-all mt-2">
             {txHash}
           </p>
-
         </div>
-
       )}
-
     </motion.div>
-
   );
-
 }
 
 export default SendMoney;
